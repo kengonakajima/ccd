@@ -1,0 +1,20 @@
+■ ccd : Discordから claude codeを駆動する node.jsによるツール
+
+
+- node.jsベースのCLIツール
+- discordの標準SDKを用いる
+- websocket接続をしてプッシュ通知を受け取る
+- botとしてdiscord チャンネルに参加する
+- discordチャンネルでbot向けに送られたテキストを claude code SDKに渡してquery関数で実行
+- assistantからのメッセージをすべて統合してdiscordに送る
+
+- APIキーの類は .envファイルに保存し、dotenv経由で読み込む
+- .envファイルは.gitignoreする
+
+
+■ 実装手順
+
+まずおうむがえしできるbotを作成し、
+それを、次に実際のclaude codeにつながっているbotに進化させる。
+
+
