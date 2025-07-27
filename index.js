@@ -56,9 +56,11 @@ async function queryClaudeCode(prompt) {
     prompt: prompt,
     abortController: new AbortController(),
     options: {
-      maxTurns: 1,
+      maxTurns: 20, // for longer tasks, enable development
       "continue": true,
       verbose: true,
+      allowedTools: ["Read", "Write", "Edit", "Create","Bash"], // for dev
+      permissionMode: "acceptEdits" // for dev
     },
   })) {
     console.log('Received message:', JSON.stringify(message, null, 2));
@@ -134,7 +136,7 @@ client.on('messageCreate', async (message) => {
         
         // Discord's message limit is 2000 characters
         if (response.length <= 2000) {
-          await message.reply(response);
+          await message.reply({ content: response, tts: true });
         } else {
           // Split long messages
           const chunks = [];
@@ -143,13 +145,14 @@ client.on('messageCreate', async (message) => {
           }
           
           // Send first chunk as reply
-          await message.reply(chunks[0] + '\n...(続く)');
+          await message.reply({ content: chunks[0] + '\n...(続く)', tts: true });
           
           // Send remaining chunks as follow-up messages
           for (let i = 1; i < chunks.length; i++) {
-            await message.channel.send(
-              (i === chunks.length - 1) ? chunks[i] : chunks[i] + '\n...(続く)'
-            );
+            await message.channel.send({
+              content: (i === chunks.length - 1) ? chunks[i] : chunks[i] + '\n...(続く)',
+              tts: true
+            });
           }
         }
       } catch (error) {
