@@ -18,3 +18,18 @@
 それを、次に実際のclaude codeにつながっているbotに進化させる。
 
 
+■ botからチャンネルに画面写真を送れるようにする
+
+まず、ccd.jsが、HTTPサーバとしてexpressを用いてエンドポイントをlistenする。
+このときのポート番号は空いている番号を使い、 claude codeを起動するときのプロンプトに含めて教える。
+
+POST で、 /send_image エンドポイントで　チャンネルIDとファイルパスを指定すると、
+ccd.jsはdiscordに対して指定されたパスにある画像ファイルを送信する。
+
+claude codeは、 curlコマンドを用いて、チャンネルIDとファイルパスを指定してccd.jsのHTTPサーバの send_image APIを呼び出す。
+
+
+画面写真は、claude codeがscreenshotコマンドを使って撮影して、保存したファイルを send_imageすればいいということだけ、
+起動時のプロンプトで伝える。
+
+

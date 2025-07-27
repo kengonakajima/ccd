@@ -1,9 +1,76 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import { query } from '@anthropic-ai/claude-code';
+import express from 'express';
+import { createServer } from 'http';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Express app setup
+const app = express();
+app.use(express.json());
+
+// Find available port
+let httpPort = 3000;
+const server = createServer(app);
+
+// Image sending endpoint
+app.post('/send_image', async (req, res) => {
+  console.log('=== /send_image endpoint called ===');
+  console.log('Request body:', req.body);
+  
+  const { channel_id, file_path } = req.body;
+  
+  if (!channel_id || !file_path) {
+    return res.status(400).json({ 
+      error: 'Missing required parameters: channel_id and file_path' 
+    });
+  }
+  
+  try {
+    // Get channel from Discord client
+    const channel = client.channels.cache.get(channel_id);
+    
+    if (!channel) {
+      console.error(`Channel not found: ${channel_id}`);
+      return res.status(404).json({ 
+        error: `Channel not found: ${channel_id}` 
+      });
+    }
+    
+    // Send image using existing sendImageToChannel function
+    const { AttachmentBuilder } = await import('discord.js');
+    const fs = await import('fs');
+    
+    if (!fs.existsSync(file_path)) {
+      console.error(`File not found: ${file_path}`);
+      return res.status(404).json({ 
+        error: `File not found: ${file_path}` 
+      });
+    }
+    
+    const fileName = file_path.split('/').pop();
+    const attachment = new AttachmentBuilder(file_path, { name: fileName });
+    
+    await channel.send({ files: [attachment] });
+    console.log(`Image sent successfully: ${file_path} to channel ${channel_id}`);
+    
+    res.json({ 
+      success: true, 
+      message: `Image sent to channel ${channel_id}`,
+      file: fileName 
+    });
+    
+  } catch (error) {
+    console.error('Error sending image:', error);
+    res.status(500).json({ 
+      error: 'Failed to send image', 
+      details: error.message 
+    });
+  }
+});
+
+// Discord client setup
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -47,13 +114,36 @@ client.once('ready', () => {
   }
 });
 
-async function queryClaudeCode(prompt) {
+async function queryClaudeCode(prompt, httpServerPort) {
   const messages = [];
   
-  console.log('Querying Claude Code with prompt:', prompt);
+  // プロンプトにHTTPサーバー情報を追加
+  const enhancedPrompt = `
+画像送信用のHTTPサーバーが http://localhost:${httpServerPort} で起動しています。
+
+画像をDiscordに送信する方法:
+1. 既存の画像ファイルを送信:
+   curl -X POST http://localhost:${httpServerPort}/send_image \
+        -H "Content-Type: application/json" \
+        -d '{"channel_id": "${process.env.STARTUP_CHANNEL_ID}", "file_path": "/path/to/image.png"}'
+
+2. スクリーンショットを撮影して送信する場合:
+   # Step 1: スクリーンショットを撮影（macOS）
+   screencapture -x /tmp/screenshot.png
+   
+   # Step 2: 撮影した画像を送信
+   curl -X POST http://localhost:${httpServerPort}/send_image \
+        -H "Content-Type: application/json" \
+        -d '{"channel_id": "${process.env.STARTUP_CHANNEL_ID}", "file_path": "/tmp/screenshot.png"}'
+
+重要: ユーザーが「スクリーンショット」「画面キャプチャ」「画面写真」などを要求した場合は、必ず上記の2つのステップを実行してください。
+
+ユーザーのリクエスト: ${prompt}`;
+  
+  console.log('Querying Claude Code with enhanced prompt');
   
   for await (const message of query({
-    prompt: prompt,
+    prompt: enhancedPrompt,
     abortController: new AbortController(),
     options: {
       maxTurns: 20, // for longer tasks, enable development
@@ -127,7 +217,7 @@ client.on('messageCreate', async (message) => {
       await message.channel.sendTyping();
       
       try {
-        const response = await queryClaudeCode(content);
+        const response = await queryClaudeCode(content, httpPort);
         
         if (!response || response.trim() === '') {
           await message.reply('エラー: Claude Codeからの応答が空でした。Claude Codeが正しく動作しているか確認してください。');
@@ -164,4 +254,29 @@ client.on('messageCreate', async (message) => {
   }
 });
 
+// Start HTTP server on available port
+const startHttpServer = () => {
+  server.listen(httpPort)
+    .on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log(`Port ${httpPort} is busy, trying ${httpPort + 1}...`);
+        httpPort++;
+        setTimeout(startHttpServer, 100);
+      } else {
+        console.error('HTTP server error:', err);
+      }
+    })
+    .on('listening', () => {
+      console.log(`\n🌐 HTTP server started on port ${httpPort}`);
+      console.log(`   Image upload endpoint: http://localhost:${httpPort}/send_image`);
+      console.log(`   Use curl to send images:`);
+      console.log(`   curl -X POST http://localhost:${httpPort}/send_image \\`);
+      console.log(`        -H "Content-Type: application/json" \\`);
+      console.log(`        -d '{"channel_id": "CHANNEL_ID", "file_path": "/path/to/image.png"}'`);
+      console.log('');
+    });
+};
+
+// Start servers
+startHttpServer();
 client.login(process.env.DISCORD_TOKEN);
