@@ -8,6 +8,12 @@ DiscordからClaude Codeを駆動するNode.jsベースのBotツール
 ccdは、Discord上でClaude Codeと対話できるBotです。メンションして質問すると、Claude Codeが応答します。
 チャンネルにBot以外のメンバーが1人だけの場合は、メンション不要で全てのメッセージに応答します。
 
+## 使用上の注意
+
+claude codeは危険なことに使えるので、プライベートチャンネルで使うようにして下さい。
+
+
+
 ## 必要な環境
 
 - Node.js v18以上
