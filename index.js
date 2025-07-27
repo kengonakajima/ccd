@@ -8,7 +8,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
 
@@ -53,11 +54,11 @@ async function queryClaudeCode(prompt) {
   
   for await (const message of query({
     prompt: prompt,
-    "continue": true,
-    verbose: true,
     abortController: new AbortController(),
     options: {
       maxTurns: 1,
+      "continue": true,
+      verbose: true,
     },
   })) {
     console.log('Received message:', JSON.stringify(message, null, 2));
@@ -92,11 +93,33 @@ async function queryClaudeCode(prompt) {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   
+  // Check if channel has only 2 members (bot + 1 user)
+  let shouldRespond = false;
+  let content = message.content;
+  
+  if (message.channel.type === 0 && message.guild) { // Guild text channel
+    // Get members who can view this channel
+    const members = message.guild.members.cache.filter(member => 
+      message.channel.permissionsFor(member).has('ViewChannel')
+    );
+    const nonBotMembers = members.filter(member => !member.user.bot);
+    
+    if (nonBotMembers.size === 1) {
+      // Only one non-bot member, respond to all messages
+      shouldRespond = true;
+    }
+  }
+  
+  // Check for mentions
   if (message.mentions.has(client.user) || message.content.includes(`<@${client.user.id}>`)) {
-    const content = message.content
+    shouldRespond = true;
+    content = message.content
       .replace(`<@${client.user.id}>`, '')
       .replace(`<@!${client.user.id}>`, '')
       .trim();
+  }
+  
+  if (shouldRespond) {
     
     if (content) {
       await message.channel.sendTyping();
