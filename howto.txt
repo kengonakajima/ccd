@@ -1,0 +1,92 @@
+# Discord Bot セットアップ手順
+
+## 1. Discord Developer Portalでアプリケーション作成
+
+1. Discord Developer Portal にアクセス
+   https://discord.com/developers/applications
+
+2. 右上の「New Application」ボタンをクリック
+
+3. アプリケーション名を入力（例：ccd-bot）
+
+4. 「Create」をクリック
+
+
+## 2. Botの作成とトークン取得
+
+1. 左側メニューから「Bot」を選択
+
+2. 「Add Bot」ボタンをクリック
+
+3. 「Yes, do it!」をクリックしてBotを作成
+
+4. 「TOKEN」セクションの「Reset Token」ボタンをクリック
+
+5. 表示されたトークンをコピー（このトークンは一度しか表示されない）
+
+6. プロジェクトの.envファイルに貼り付け：
+   DISCORD_TOKEN=コピーしたトークン
+
+
+## 3. Botの権限設定
+
+1. 左側メニューから「Bot」を選択
+
+2. 「Privileged Gateway Intents」セクションで以下を有効化：
+   - MESSAGE CONTENT INTENT（重要：これがないとメッセージ内容が読めない）
+
+3. 変更を保存
+
+
+## 4. BotをDiscordサーバーに招待
+
+1. 左側メニューから「OAuth2」→「URL Generator」を選択
+
+2. 「SCOPES」セクションで以下を選択：
+   - bot
+
+3. 「BOT PERMISSIONS」セクションで以下を選択：
+   - Send Messages
+   - Read Messages/View Channels
+   - Mention Everyone（@mentionを使う場合）
+
+4. 下部に生成されたURLをコピー
+
+183296
+
+5. ブラウザで生成されたURLにアクセス
+
+6. Botを追加したいサーバーを選択
+
+7. 「認証」をクリック
+
+
+## 5. Botの起動と動作確認
+
+1. プロジェクトディレクトリで以下を実行：
+   npm start
+
+2. コンソールに「Logged in as [Bot名]#[番号]!」と表示されることを確認
+
+3. Discordサーバーで、Botがオンラインになっていることを確認
+
+4. チャンネルで @Bot名 メッセージ を送信
+
+5. Botがメッセージをそのまま返信することを確認
+
+
+## トラブルシューティング
+
+### Botがオフラインの場合
+- トークンが正しく設定されているか確認
+- .envファイルがプロジェクトルートにあるか確認
+- npm startでエラーが出ていないか確認
+
+### メッセージに反応しない場合
+- MESSAGE CONTENT INTENTが有効になっているか確認
+- Botに適切な権限があるか確認
+- @メンションが正しく行われているか確認
+
+### 権限エラーが出る場合
+- Botの権限設定を再確認
+- サーバーでのBotの役職（ロール）設定を確認

@@ -1,0 +1,25 @@
+{
+  "name": "ccd",
+  "version": "0.1.0",
+  "description": "Discord bot to drive Claude Code via node.js",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "claude",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.61",
+    "@anthropic-ai/sdk": "^0.57.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
