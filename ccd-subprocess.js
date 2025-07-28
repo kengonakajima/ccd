@@ -111,41 +111,49 @@ app.post('/send_image', async (req, res) => {
   if (!channel_id || !file_path) {
     console.error('Missing required parameters');
     return res.status(400).json({ 
-      success: false, 
-      error: 'channel_id and file_path are required' 
+      error: 'Missing required parameters: channel_id and file_path' 
     });
   }
   
   try {
+    // Get channel from Discord client
     const channel = client.channels.cache.get(channel_id);
+    
     if (!channel) {
-      console.error('Channel not found:', channel_id);
+      console.error(`Channel not found: ${channel_id}`);
       return res.status(404).json({ 
-        success: false, 
-        error: 'Channel not found' 
+        error: `Channel not found: ${channel_id}` 
       });
     }
     
-    const fileExists = await fs.access(file_path).then(() => true).catch(() => false);
-    if (!fileExists) {
-      console.error('File not found:', file_path);
+    // Check if file exists
+    const { AttachmentBuilder } = await import('discord.js');
+    const fs = await import('fs');
+    
+    if (!fs.existsSync(file_path)) {
+      console.error(`File not found: ${file_path}`);
       return res.status(404).json({ 
-        success: false, 
-        error: 'File not found' 
+        error: `File not found: ${file_path}` 
       });
     }
     
-    await channel.send({
-      files: [file_path]
+    const fileName = file_path.split('/').pop();
+    const attachment = new AttachmentBuilder(file_path, { name: fileName });
+    
+    await channel.send({ files: [attachment] });
+    console.log(`Image sent successfully: ${file_path} to channel ${channel_id}`);
+    
+    res.json({ 
+      success: true, 
+      message: `Image sent to channel ${channel_id}`,
+      file: fileName 
     });
     
-    console.log('Image sent successfully!');
-    res.json({ success: true });
   } catch (error) {
     console.error('Error sending image:', error);
     res.status(500).json({ 
-      success: false, 
-      error: error.message 
+      error: 'Failed to send image', 
+      details: error.message 
     });
   }
 });
@@ -342,6 +350,38 @@ const callClaudeCodeSubprocess = async (prompt, discordMessage, initialReply) =>
     const enhancedPrompt = `現在時刻: ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
 コンテキスト: Discordボットからのリモート操作
 作業ディレクトリ: ${process.cwd()}
+
+あなたはリモート(Discord上)にいるユーザーから指示されて仕事をするエージェントです。
+ユーザーはリモートにいるので、ローカルPCの操作ができません。たとえば、画面を見るとか、音を聞くなど。
+したがって、あなたはリモートにいるユーザーに変わって、ローカルPCを操作しなければなりません。
+CLIツールなら出力の文字列を、Webアプリならplaywrightを駆使して画面写真を撮影します。
+また、ネイティブアプリの場合は、開発中のネイティブアプリの場合は、
+自分自身の描画結果をキャプチャするような機能を実装している場合は、その機能を使って画面写真を送信できます。
+
+リモートからの指示はできるだけ早く応答したいので、ずっと時間がかかりうること、
+たとえばサーバーをバックグランドで起動してずっと待つようなことはしないで、
+かならず10~30秒程度のtimeoutを設定して実行するようにしてください。
+listenするようなプログラムを、時間制限がない状態で起動しないようにして下さい。
+
+画像送信用のHTTPサーバーが http://localhost:${httpPort} で起動しています。
+
+画像をDiscordに送信する方法:
+1. 既存の画像ファイルを送信:
+   curl -X POST http://localhost:${httpPort}/send_image \\
+        -H "Content-Type: application/json" \\
+        -d '{"channel_id": "${process.env.STARTUP_CHANNEL_ID || discordMessage.channel.id}", "file_path": "/path/to/image.png"}'
+
+2. スクリーンショットを撮影して送信する場合: webアプリの場合は、playwrightを使って画面写真をとる。
+ネイティブアプリの場合は、画面がロックされていると撮影できないので、ロックされてるかどうか調べて、
+ロックされているときは無理とユーザーに伝える。
+
+   # Step 1: スクリーンショットを撮影（macOS）
+   screencapture -x /tmp/screenshot.png
+   
+   # Step 2: 撮影した画像を送信
+   curl -X POST http://localhost:${httpPort}/send_image \\
+        -H "Content-Type: application/json" \\
+        -d '{"channel_id": "${process.env.STARTUP_CHANNEL_ID || discordMessage.channel.id}", "file_path": "/tmp/screenshot.png"}'
 
 ユーザーのリクエスト: ${prompt}`;
     
