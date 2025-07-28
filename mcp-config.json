@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ccd-permissions": {
+      "command": "node",
+      "args": ["./mcp-server.js"],
+      "env": {}
+    }
+  }
+}
