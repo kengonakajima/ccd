@@ -119,6 +119,19 @@ async function queryClaudeCode(prompt, httpServerPort) {
   
   // プロンプトにHTTPサーバー情報を追加
   const enhancedPrompt = `
+あなたはリモート(Discord上)にいるユーザーから指示されて仕事をするエージェントです。
+ユーザーはリモートにいるので、ローカルPCの操作ができません。たとえば、画面を見るとか、音を聞くなど。
+したがって、あなたはリモートにいるユーザーに変わって、ローカルPCを操作しなければなりません。
+CLIツールなら出力の文字列を、Webアプリならplaywrightを駆使して画面写真を撮影します。
+また、ネイティブアプリの場合は、開発中のネイティブアプリの場合は、
+自分自身の描画結果をキャプチャするような機能を実装している場合は、その機能を使って画面写真を送信できます。
+
+リモートからの指示はできるだけ早く応答したいので、ずっと時間がかかりうること、
+たとえばサーバーをバックグランドで起動してずっと待つようなことはしないで、
+かならず10~30秒程度のtimeoutを設定して実行するようにしてください。
+listenするようなプログラムを、時間制限がない状態で起動しないようにして下さい。
+
+
 画像送信用のHTTPサーバーが http://localhost:${httpServerPort} で起動しています。
 
 画像をDiscordに送信する方法:
@@ -127,7 +140,10 @@ async function queryClaudeCode(prompt, httpServerPort) {
         -H "Content-Type: application/json" \
         -d '{"channel_id": "${process.env.STARTUP_CHANNEL_ID}", "file_path": "/path/to/image.png"}'
 
-2. スクリーンショットを撮影して送信する場合:
+2. スクリーンショットを撮影して送信する場合: webアプリの場合は、playwrightを使って画面写真をとる。
+ネイティブアプリの場合は、画面がロックされていると撮影できないので、ロックされてるかどうか調べて、
+ロックされているときは無理とユーザーに伝える。
+
    # Step 1: スクリーンショットを撮影（macOS）
    screencapture -x /tmp/screenshot.png
    
@@ -136,7 +152,8 @@ async function queryClaudeCode(prompt, httpServerPort) {
         -H "Content-Type: application/json" \
         -d '{"channel_id": "${process.env.STARTUP_CHANNEL_ID}", "file_path": "/tmp/screenshot.png"}'
 
-重要: ユーザーが「スクリーンショット」「画面キャプチャ」「画面写真」などを要求した場合は、必ず上記の2つのステップを実行してください。
+
+
 
 ユーザーのリクエスト: ${prompt}`;
   
@@ -146,7 +163,7 @@ async function queryClaudeCode(prompt, httpServerPort) {
     prompt: enhancedPrompt,
     abortController: new AbortController(),
     options: {
-      maxTurns: 20, // for longer tasks, enable development
+      maxTurns: 3, // for longer tasks, enable development
       "continue": true,
       verbose: true,
       allowedTools: ["Read", "Write", "Edit", "Create","Bash"], // for dev
@@ -163,6 +180,13 @@ async function queryClaudeCode(prompt, httpServerPort) {
   const resultMessage = messages.find(msg => msg.type === 'result' && msg.subtype === 'success');
   if (resultMessage && resultMessage.result) {
     console.log('Found result:', resultMessage.result);
+    
+    // Check for credit balance error
+    if (resultMessage.is_error && resultMessage.result === 'Credit balance is too low') {
+      console.log('Credit balance error detected');
+      return 'クレジットが足りません。Claude Codeのクレジットを追加してください。';
+    }
+    
     return resultMessage.result;
   }
   
