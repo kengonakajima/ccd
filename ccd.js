@@ -114,8 +114,9 @@ client.once('ready', () => {
   }
 });
 
-async function queryClaudeCode(prompt, httpServerPort) {
+async function queryClaudeCode(prompt, httpServerPort, discordChannel) {
   const messages = [];
+  let lastSentMessageId = null;
   
   // プロンプトにHTTPサーバー情報を追加
   const enhancedPrompt = `
@@ -163,15 +164,49 @@ listenするようなプログラムを、時間制限がない状態で起動�
     prompt: enhancedPrompt,
     abortController: new AbortController(),
     options: {
-      maxTurns: 3, // for longer tasks, enable development
+      maxTurns: 20, // for longer tasks, enable development
       "continue": true,
       verbose: true,
+      model: "claude-sonnet-4-20250514",      
       allowedTools: ["Read", "Write", "Edit", "Create","Bash"], // for dev
       permissionMode: "acceptEdits" // for dev
     },
   })) {
-    console.log('Received message:', JSON.stringify(message, null, 2));
+    console.log('Received message type:', message.type);
     messages.push(message);
+    
+    // Assistantのテキストメッセージを即時送信
+    if (message.type === 'assistant' && message.message && message.message.content) {
+      const textContent = message.message.content
+        .filter(item => item.type === 'text')
+        .map(item => item.text)
+        .join('\n')
+        .trim();
+      
+      if (textContent && discordChannel) {
+        try {
+          // 初回メッセージか、続きのメッセージかを判断
+          if (!lastSentMessageId) {
+            // 初回メッセージを送信
+            const sentMessage = await discordChannel.send({
+              content: textContent.length > 2000 ? textContent.substring(0, 1997) + '...' : textContent,
+              tts: true
+            });
+            lastSentMessageId = sentMessage.id;
+            console.log('Sent initial streaming message to Discord');
+          } else {
+            // 続きのメッセージを送信
+            await discordChannel.send({
+              content: textContent.length > 2000 ? textContent.substring(0, 1997) + '...' : textContent,
+              tts: true
+            });
+            console.log('Sent continuation streaming message to Discord');
+          }
+        } catch (error) {
+          console.error('Error sending streaming message to Discord:', error);
+        }
+      }
+    }
   }
   
   console.log('All messages:', messages);
@@ -184,26 +219,31 @@ listenするようなプログラムを、時間制限がない状態で起動�
     // Check for credit balance error
     if (resultMessage.is_error && resultMessage.result === 'Credit balance is too low') {
       console.log('Credit balance error detected');
-      return 'クレジットが足りません。Claude Codeのクレジットを追加してください。';
+      return { text: 'クレジットが足りません。Claude Codeのクレジットを追加してください。', streamed: false };
     }
     
-    return resultMessage.result;
+    // 最終結果があるが、すでにストリーミングで送信済みの場合はnullを返す
+    return { text: null, streamed: lastSentMessageId !== null };
   }
   
-  // Try to extract from assistant message
-  const assistantMessage = messages.find(msg => msg.type === 'assistant');
-  if (assistantMessage && assistantMessage.message && assistantMessage.message.content) {
-    const content = assistantMessage.message.content;
-    // content is an array, extract text from it
-    const textContent = content
-      .filter(item => item.type === 'text')
-      .map(item => item.text)
-      .join('\n');
-    console.log('Extracted text content:', textContent);
-    return textContent;
+  // ストリーミングメッセージが送信されていない場合のみ、最終メッセージを返す
+  if (!lastSentMessageId) {
+    const assistantMessage = messages.find(msg => msg.type === 'assistant');
+    if (assistantMessage && assistantMessage.message && assistantMessage.message.content) {
+      const content = assistantMessage.message.content;
+      // content is an array, extract text from it
+      const textContent = content
+        .filter(item => item.type === 'text')
+        .map(item => item.text)
+        .join('\n');
+      console.log('Extracted text content:', textContent);
+      return { text: textContent, streamed: false };
+    }
+    
+    return { text: 'エラー: Claude Codeからの応答が空でした。', streamed: false };
   }
   
-  return 'エラー: Claude Codeからの応答が空でした。';
+  return { text: null, streamed: true };
 }
 
 client.on('messageCreate', async (message) => {
@@ -241,33 +281,51 @@ client.on('messageCreate', async (message) => {
       await message.channel.sendTyping();
       
       try {
-        const response = await queryClaudeCode(content, httpPort);
+        const result = await queryClaudeCode(content, httpPort, message.channel);
         
-        if (!response || response.trim() === '') {
-          await message.reply('エラー: Claude Codeからの応答が空でした。Claude Codeが正しく動作しているか確認してください。');
+        // ストリーミングで送信済みの場合
+        if (result.streamed && !result.text) {
+          console.log('Response already sent via streaming');
+          // 最終メッセージを送信
+          await message.channel.send('以上でおわりです');
           return;
         }
         
-        // Discord's message limit is 2000 characters
-        if (response.length <= 2000) {
-          await message.reply({ content: response, tts: true });
-        } else {
-          // Split long messages
-          const chunks = [];
-          for (let i = 0; i < response.length; i += 1900) {
-            chunks.push(response.slice(i, i + 1900));
+        const response = result.text;
+        
+        if (!response || response.trim() === '') {
+          // ストリーミングで送信済みでない場合のみエラーメッセージを表示
+          if (!result.streamed) {
+            await message.reply('エラー: Claude Codeからの応答が空でした。Claude Codeが正しく動作しているか確認してください。');
           }
-          
-          // Send first chunk as reply
-          await message.reply({ content: chunks[0] + '\n...(続く)', tts: true });
-          
-          // Send remaining chunks as follow-up messages
-          for (let i = 1; i < chunks.length; i++) {
-            await message.channel.send({
-              content: (i === chunks.length - 1) ? chunks[i] : chunks[i] + '\n...(続く)',
-              tts: true
-            });
+          return;
+        }
+        
+        // ストリーミングで送信していない場合のみ、最終応答を送信
+        if (!result.streamed) {
+          // Discord's message limit is 2000 characters
+          if (response.length <= 2000) {
+            await message.reply({ content: response, tts: true });
+          } else {
+            // Split long messages
+            const chunks = [];
+            for (let i = 0; i < response.length; i += 1900) {
+              chunks.push(response.slice(i, i + 1900));
+            }
+            
+            // Send first chunk as reply
+            await message.reply({ content: chunks[0] + '\n...(続く)', tts: true });
+            
+            // Send remaining chunks as follow-up messages
+            for (let i = 1; i < chunks.length; i++) {
+              await message.channel.send({
+                content: (i === chunks.length - 1) ? chunks[i] : chunks[i] + '\n...(続く)',
+                tts: true
+              });
+            }
           }
+          // 最終メッセージを送信
+          await message.channel.send('以上でおわりです');
         }
       } catch (error) {
         console.error('Error details:', error);
